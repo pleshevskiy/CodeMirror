@@ -3682,7 +3682,16 @@
         onClose(prompt(shortText, ''));
       }
     }
+    
     function splitBySlash(argString) {
+      return splitBySeparator(argString, '/');
+    }
+    
+    function findUnescapedSlashes(argString) {
+      return findUnescapedSeparators(argString, '/');
+    }
+    
+    function splitBySeparator(argString, separator) {
       var slashes = findUnescapedSlashes(argString) || [];
       if (!slashes.length) return [];
       var tokens = [];
@@ -3695,12 +3704,15 @@
       return tokens;
     }
 
-    function findUnescapedSlashes(str) {
+    function findUnescapedSeparators(str, separator) {
+      if (!separator)
+        separator = '/';
+      
       var escapeNextChar = false;
       var slashes = [];
       for (var i = 0; i < str.length; i++) {
         var c = str.charAt(i);
-        if (!escapeNextChar && c == '/') {
+        if (!escapeNextChar && c == separator) {
           slashes.push(i);
         }
         escapeNextChar = !escapeNextChar && (c == '\\');
@@ -4131,7 +4143,7 @@
         } else {
           result.line = this.parseLineSpec_(cm, inputStream);
           if (result.line !== undefined && inputStream.eat(',')) {
-            result.lineEnd = this.parseLineSpec_(cm, inputStream);
+            result.lineEnd = this.parseLineSpec_(cm, inputStream, result.line);
           }
         }
 
@@ -4145,7 +4157,7 @@
 
         return result;
       },
-      parseLineSpec_: function(cm, inputStream) {
+      parseLineSpec_: function(cm, inputStream, prevLine) {
         var numberMatch = inputStream.match(/^(\d+)/);
         if (numberMatch) {
           // Absolute line number plus offset (N+M or N-M) is probably a typo,
@@ -4162,11 +4174,14 @@
             var markPos = getMarkPos(cm, cm.state.vim, markName);
             if (!markPos) throw new Error('Mark not set');
             return this.parseLineSpecOffset_(inputStream, markPos.line);
-          case '-':
           case '+':
-            inputStream.backUp(1);
-            // Offset is relative to current line if not otherwise specified.
-            return this.parseLineSpecOffset_(inputStream, cm.getCursor().line);
+            if (prevLine) {
+              var match = inputStream.match(/^\d+/);
+              if (match) {
+                return prevLine + parseInt(match[0], 10);
+              }
+            }
+            throw new Error('Require prevLine');
           default:
             inputStream.backUp(1);
             return undefined;
@@ -4566,7 +4581,7 @@
               'any other getSearchCursor implementation.');
         }
         var argString = params.argString;
-        var tokens = argString ? splitBySlash(argString) : [];
+        var tokens = argString ? splitBySeparator(argString, argString[0]) : [];
         var regexPart, replacePart = '', trailing, flagsPart, count;
         var confirm = false; // Whether to confirm each replace.
         var global = false; // True to replace all instances on a line, false to replace only 1.
